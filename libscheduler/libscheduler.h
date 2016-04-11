@@ -4,6 +4,18 @@
 #ifndef LIBSCHEDULER_H_
 #define LIBSCHEDULER_H_
 
+#include "../libpriqueue/libpriqueue.h"
+
+
+typedef struct _job_t {
+
+  int job_id;
+  int arrival_time;
+  int run_time;
+  int priority;
+
+} job_t;
+
 /**
   Constants which represent the different scheduling algorithms
 */
