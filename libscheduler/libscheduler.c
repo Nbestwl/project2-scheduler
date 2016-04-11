@@ -14,20 +14,55 @@
 
   You may need to define some global variables or a struct to store your job queue elements.
 */
-typedef struct _job_t
-{
 
-  int job_id;
-  int arrival_time;
-  int run_time;
-  int priority;
 
-} job_t;
-
-job_t *job;
+job_t **job;
 priqueue_t *jobQueue;
 scheme_t s;
 int coreNum;
+
+
+int cFCFS (const void * a, const void * b)
+{
+
+  return (((job_t*)a)->arrival_time - ((job_t*)b)->arrival_time);
+
+}
+
+int cSJF (const void * a, const void * b)
+{
+
+  return (((job_t*)a)->run_time - ((job_t*)b)->run_time);
+
+}
+
+int cPSFJ (const void * a, const void * b)
+{
+
+  return (((job_t*)a)->run_time - ((job_t*)b)->run_time);
+
+}
+
+int cPRI (const void * a, const void * b)
+{
+
+  return (((job_t*)a)->priority - ((job_t*)b)->priority);
+
+}
+
+int cPPRI (const void * a, const void * b)
+{
+
+  return (((job_t*)a)->priority - ((job_t*)b)->priority);
+
+}
+
+int cRR (const void * a, const void * b)
+{
+
+  //return (((job_t*)a)->arrival_time - ((job_t*)b)->arrival_time);
+  return 1;
+}
 
 
 /**
@@ -47,8 +82,9 @@ void scheduler_start_up(int cores, scheme_t scheme)
 
   coreNum = cores;
 
-  job = malloc(coreNum * sizeof(job_t));
+  job = malloc(cores * sizeof(job_t));
   jobQueue = malloc(sizeof(priqueue_t));
+
 
   int x;
   for(x = 0; x < coreNum; x++){
@@ -65,7 +101,7 @@ void scheduler_start_up(int cores, scheme_t scheme)
 
     priqueue_init(jobQueue, cSJF);
 
-  }else if(s == PSFJ){
+  }else if(s == PSJF){
 
     priqueue_init(jobQueue, cPSFJ);
 
@@ -85,47 +121,7 @@ void scheduler_start_up(int cores, scheme_t scheme)
 
 }
 
-void cFCFS (const void * a, const void * b)
-{
 
-  return (((job_t*)a)->arrival_time - ((job_t*)b)->arrival_time);
-
-}
-
-void cSJF (const void * a, const void * b)
-{
-
-  return (((job_t*)a)->run_time - ((job_t*)b)->run_time);
-
-}
-
-void cPSFJ (const void * a, const void * b)
-{
-
-  return (((job_t*)a)->run_time - ((job_t*)b)->run_time);
-
-}
-
-void cPRI (const void * a, const void * b)
-{
-
-  return (((job_t*)a)->priority - ((job_t*)b)->priority);
-
-}
-
-void cPPRI (const void * a, const void * b)
-{
-
-  return (((job_t*)a)->priority - ((job_t*)b)->priority);
-
-}
-
-void cRR (const void * a, const void * b)
-{
-
-  return (((job_t*)a)->arrival_time - ((job_t*)b)->arrival_time);
-
-}
 
 
 /**
@@ -159,7 +155,10 @@ int scheduler_new_job(int job_number, int time, int running_time, int priority)
   new_job->run_time = running_time;
   new_job->priority = priority;
 
+  int tempIndex = -1;
+
   int x;
+
   int full = 1;
   int index = -1;
   for(x = 0; x < coreNum; x++){
@@ -175,15 +174,58 @@ int scheduler_new_job(int job_number, int time, int running_time, int priority)
 
   if(full == 1){
 
-    if(s == PSFJ){
+    if(s == PSJF){
 
-      
+      int longestJob = 0;
+
+      for(x = 0; x < coreNum - 1; x++){
+
+        if(job[x + 1] == NULL){
+          break;
+        }
+
+        if((job[x + 1]->arrival_time + job[x + 1]->run_time) - time > (job[x + 1]->arrival_time + job[x + 1]->run_time) - time){
+          longestJob = x + 1;
+        }
+
+      }
+
+        if(((job[longestJob]->arrival_time + job[longestJob]->run_time) - time) > running_time){
+          job_t *temp = job[longestJob];
+          job[longestJob] = new_job;
+          new_job = temp;
+          index = longestJob;
+
+        }
 
     }else if(s == PPRI){
 
-    }else if(s == RR){
+      int largestPriority = 0;
+
+      for(x = 0; x < coreNum - 1; x++){
+
+        if(job[x + 1] == NULL){
+          break;
+        }
+
+        if(job[x + 1]->priority > job[x]->priority){
+          largestPriority = x + 1;
+        }
+
+      }
+
+        if(job[largestPriority]->priority > new_job->priority){
+          job_t *temp = job[largestPriority];
+          job[largestPriority] = new_job;
+          new_job = temp;
+          index = largestPriority;
+
+        }
 
     }
+
+
+    priqueue_offer(jobQueue, new_job);
 
   }
 
@@ -209,6 +251,18 @@ int scheduler_new_job(int job_number, int time, int running_time, int priority)
  */
 int scheduler_job_finished(int core_id, int job_number, int time)
 {
+
+  free(job[core_id]);
+  job[core_id] = NULL;
+
+  void *tempValues = priqueue_poll(jobQueue);
+
+
+  if(tempValues != NULL){
+    scheduler_new_job(((job_t *)tempValues)->job_id, ((job_t *)tempValues)->arrival_time, ((job_t *)tempValues)->run_time, ((job_t *)tempValues)->priority);
+    return ((job_t *)tempValues)->job_id;
+  }
+
 	return -1;
 }
 
@@ -228,6 +282,22 @@ int scheduler_job_finished(int core_id, int job_number, int time)
  */
 int scheduler_quantum_expired(int core_id, int time)
 {
+
+  job_t *temp = job[core_id];
+  job[core_id] = NULL;
+
+  priqueue_offer(jobQueue, temp);
+
+
+
+  void *frontJob = priqueue_poll(jobQueue);
+
+  if(frontJob != NULL){
+    scheduler_new_job(((job_t *)frontJob)->job_id, time, ((job_t *)frontJob)->run_time, ((job_t *)frontJob)->priority);
+    return ((job_t *)frontJob)->job_id;
+  }
+
+
 	return -1;
 }
 
@@ -279,6 +349,8 @@ float scheduler_average_response_time()
 */
 void scheduler_clean_up()
 {
+
+
 
 }
 
